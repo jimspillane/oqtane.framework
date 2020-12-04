@@ -23,26 +23,22 @@ namespace Oqtane.Controllers
     public class ModuleDefinitionController : Controller
     {
         private readonly IModuleDefinitionRepository _moduleDefinitions;
-        private readonly IModuleRepository _modules;
         private readonly ITenantRepository _tenants;
         private readonly ISqlRepository _sql;
         private readonly IUserPermissions _userPermissions;
         private readonly IInstallationManager _installationManager;
         private readonly IWebHostEnvironment _environment;
-        private readonly IConfigurationRoot _config;
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogManager _logger;
 
-        public ModuleDefinitionController(IModuleDefinitionRepository moduleDefinitions, IModuleRepository modules,ITenantRepository tenants, ISqlRepository sql, IUserPermissions userPermissions, IInstallationManager installationManager, IWebHostEnvironment environment, IConfigurationRoot config, IServiceProvider serviceProvider, ILogManager logger)
+        public ModuleDefinitionController(IModuleDefinitionRepository moduleDefinitions, ITenantRepository tenants, ISqlRepository sql, IUserPermissions userPermissions, IInstallationManager installationManager, IWebHostEnvironment environment, IServiceProvider serviceProvider, ILogManager logger)
         {
             _moduleDefinitions = moduleDefinitions;
-            _modules = modules;
             _tenants = tenants;
             _sql = sql;
             _userPermissions = userPermissions;
             _installationManager = installationManager;
             _environment = environment;
-            _config = config;
             _serviceProvider = serviceProvider;
             _logger = logger;
         }
@@ -96,7 +92,7 @@ namespace Oqtane.Controllers
         public void InstallModules()
         {
             _logger.Log(LogLevel.Information, this, LogFunction.Create, "Modules Installed");
-            _installationManager.InstallPackages("Modules", true);
+            _installationManager.InstallPackages("Modules");
         }
 
         // DELETE api/<controller>/5?siteid=x
@@ -159,9 +155,6 @@ namespace Oqtane.Controllers
                     // remove module definition
                     _moduleDefinitions.DeleteModuleDefinition(id, siteid);
                     _logger.Log(LogLevel.Information, this, LogFunction.Delete, "Module Definition {ModuleDefinitionName} Deleted", moduledefinition.Name);
-
-                    // restart application
-                    _installationManager.RestartApplication();
                 }
             }
         }
@@ -169,7 +162,7 @@ namespace Oqtane.Controllers
         // POST api/<controller>?moduleid=x
         [HttpPost]
         [Authorize(Roles = RoleNames.Host)]
-        public void Post([FromBody] ModuleDefinition moduleDefinition, string moduleid)
+        public ModuleDefinition Post([FromBody] ModuleDefinition moduleDefinition)
         {
             if (ModelState.IsValid)
             {
@@ -193,21 +186,17 @@ namespace Oqtane.Controllers
                 ProcessTemplatesRecursively(new DirectoryInfo(templatePath), rootPath, rootFolder.Name, templatePath, moduleDefinition);
                 _logger.Log(LogLevel.Information, this, LogFunction.Create, "Module Definition Created {ModuleDefinition}", moduleDefinition);
 
-                Models.Module module = _modules.GetModule(int.Parse(moduleid));
-                module.ModuleDefinitionName = moduleDefinition.ModuleDefinitionName;
-                _modules.UpdateModule(module);
-
                 if (moduleDefinition.Template == "internal")
                 {
-                    // add embedded resources to project
+                    // add embedded resources to project file
                     List<string> resources = new List<string>();
                     resources.Add(Utilities.PathCombine("Modules", moduleDefinition.Owner + "." + moduleDefinition.Name, "Scripts", moduleDefinition.Owner + "." + moduleDefinition.Name + ".1.0.0.sql"));
                     resources.Add(Utilities.PathCombine("Modules", moduleDefinition.Owner + "." + moduleDefinition.Name, "Scripts", moduleDefinition.Owner + "." + moduleDefinition.Name + ".Uninstall.sql"));
                     EmbedResourceFiles(Utilities.PathCombine(rootPath, "Oqtane.Server", "Oqtane.Server.csproj"), resources);
                 }
-
-                _installationManager.RestartApplication();
             }
+
+            return moduleDefinition;
         }
 
         private void ProcessTemplatesRecursively(DirectoryInfo current, string rootPath, string rootFolder, string templatePath, ModuleDefinition moduleDefinition)
